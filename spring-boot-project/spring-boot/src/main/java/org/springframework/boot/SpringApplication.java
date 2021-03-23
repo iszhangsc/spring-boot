@@ -267,10 +267,15 @@ public class SpringApplication {
 	public SpringApplication(ResourceLoader resourceLoader, Class<?>... primarySources) {
 		this.resourceLoader = resourceLoader;
 		Assert.notNull(primarySources, "PrimarySources must not be null");
+		// 初始化方法传入的主要加载资源类并去重(该类一般都是配置类,且标注了 @SpringBootApplication 注解的.) !!!
 		this.primarySources = new LinkedHashSet<>(Arrays.asList(primarySources));
+		// 根据ClassPath 下的包推断 应用类型(NONE、SERVLET、REACTIVE) 三种中的一种.
 		this.webApplicationType = WebApplicationType.deduceFromClasspath();
+		// 获取  spring.factories 中 ApplicationContextInitializer 实例 并设置应用上下文初始化器 ！！！！！
 		setInitializers((Collection) getSpringFactoriesInstances(ApplicationContextInitializer.class));
+		// 获取 spring.factories 中 ApplicationListener 实例 并设置 监听器
 		setListeners((Collection) getSpringFactoriesInstances(ApplicationListener.class));
+		// 推断当前main方法的class
 		this.mainApplicationClass = deduceMainApplicationClass();
 	}
 
@@ -278,6 +283,7 @@ public class SpringApplication {
 		try {
 			StackTraceElement[] stackTrace = new RuntimeException().getStackTrace();
 			for (StackTraceElement stackTraceElement : stackTrace) {
+				// 通过堆栈查找main方法对应的Class
 				if ("main".equals(stackTraceElement.getMethodName())) {
 					return Class.forName(stackTraceElement.getClassName());
 				}
@@ -296,21 +302,33 @@ public class SpringApplication {
 	 * @return a running {@link ApplicationContext}
 	 */
 	public ConfigurableApplicationContext run(String... args) {
+		// 计时器
 		StopWatch stopWatch = new StopWatch();
 		stopWatch.start();
+		// 定义BeanFactory 对象类型
 		ConfigurableApplicationContext context = null;
+		// 定义错误报告存储集合
 		Collection<SpringBootExceptionReporter> exceptionReporters = new ArrayList<>();
+		// java awt Linux 下报错bug处理.
 		configureHeadlessProperty();
+		// 获取  spring.factories 中 SpringApplicationRunListener 实例
 		SpringApplicationRunListeners listeners = getRunListeners(args);
 		listeners.starting();
 		try {
+			// 封装run方法中传递的参数
 			ApplicationArguments applicationArguments = new DefaultApplicationArguments(args);
+			// 准备环境 ！！
 			ConfigurableEnvironment environment = prepareEnvironment(listeners, applicationArguments);
+			// 配置忽略Bean信息
 			configureIgnoreBeanInfo(environment);
+			// 打印Banner
 			Banner printedBanner = printBanner(environment);
+			// 实例化 BeanFactory 实例(没有属性填充)
 			context = createApplicationContext();
+			// 获取 spring.factories 中的  SpringBootExceptionReporter 实例对象, 错误报告.
 			exceptionReporters = getSpringFactoriesInstances(SpringBootExceptionReporter.class,
 					new Class[] { ConfigurableApplicationContext.class }, context);
+			// 准备上下文环境！！！！！！
 			prepareContext(context, environment, listeners, applicationArguments, printedBanner);
 			refreshContext(context);
 			afterRefresh(context, applicationArguments);
@@ -339,7 +357,9 @@ public class SpringApplication {
 	private ConfigurableEnvironment prepareEnvironment(SpringApplicationRunListeners listeners,
 			ApplicationArguments applicationArguments) {
 		// Create and configure the environment
+		//  根据 webApplicationType 获取或者创建对应的环境对象
 		ConfigurableEnvironment environment = getOrCreateEnvironment();
+		// 配置环境,选择激活配置文件！！！！！
 		configureEnvironment(environment, applicationArguments.getSourceArgs());
 		ConfigurationPropertySources.attach(environment);
 		listeners.environmentPrepared(environment);
@@ -367,6 +387,7 @@ public class SpringApplication {
 			SpringApplicationRunListeners listeners, ApplicationArguments applicationArguments, Banner printedBanner) {
 		context.setEnvironment(environment);
 		postProcessApplicationContext(context);
+		// 应用 ApplicationContextInitializer#initialize() 方法
 		applyInitializers(context);
 		listeners.contextPrepared(context);
 		if (this.logStartupInfo) {
@@ -387,6 +408,7 @@ public class SpringApplication {
 			context.addBeanFactoryPostProcessor(new LazyInitializationBeanFactoryPostProcessor());
 		}
 		// Load the sources
+		// 获取主要加载资源类
 		Set<Object> sources = getAllSources();
 		Assert.notEmpty(sources, "Sources must not be empty");
 		load(context, sources.toArray(new Object[0]));
@@ -406,6 +428,7 @@ public class SpringApplication {
 	}
 
 	private void configureHeadlessProperty() {
+		// awt 配置
 		System.setProperty(SYSTEM_PROPERTY_JAVA_AWT_HEADLESS,
 				System.getProperty(SYSTEM_PROPERTY_JAVA_AWT_HEADLESS, Boolean.toString(this.headless)));
 	}
@@ -421,10 +444,15 @@ public class SpringApplication {
 	}
 
 	private <T> Collection<T> getSpringFactoriesInstances(Class<T> type, Class<?>[] parameterTypes, Object... args) {
+		// 获取类加载器
 		ClassLoader classLoader = getClassLoader();
 		// Use names and ensure unique to protect against duplicates
+		// loadFactoryNames Spring框架自带方法 用于加载 META-INF/spring.factories 文件 !!!!!!!!
+		// 获取到该type对应的所有全限定类名
 		Set<String> names = new LinkedHashSet<>(SpringFactoriesLoader.loadFactoryNames(type, classLoader));
+		// 通过找到的全限定类名创建实例化对象
 		List<T> instances = createSpringFactoriesInstances(type, parameterTypes, classLoader, args, names);
+		// 排序
 		AnnotationAwareOrderComparator.sort(instances);
 		return instances;
 	}
@@ -452,6 +480,7 @@ public class SpringApplication {
 		if (this.environment != null) {
 			return this.environment;
 		}
+		// 根据应用类型确定使用哪种环境对象, 但都会使用到 StandardEnvironment 对象.
 		switch (this.webApplicationType) {
 		case SERVLET:
 			return new StandardServletEnvironment();
@@ -474,6 +503,7 @@ public class SpringApplication {
 	 * @see #configurePropertySources(ConfigurableEnvironment, String[])
 	 */
 	protected void configureEnvironment(ConfigurableEnvironment environment, String[] args) {
+		// 默认支持添加转换服务.
 		if (this.addConversionService) {
 			ConversionService conversionService = ApplicationConversionService.getSharedInstance();
 			environment.setConversionService((ConfigurableConversionService) conversionService);
@@ -1234,6 +1264,7 @@ public class SpringApplication {
 	 * @return the running {@link ApplicationContext}
 	 */
 	public static ConfigurableApplicationContext run(Class<?>[] primarySources, String[] args) {
+		// new 和 run 都要看!!!!
 		return new SpringApplication(primarySources).run(args);
 	}
 
